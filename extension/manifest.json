@@ -1,27 +1,21 @@
 {
   "manifest_version": 3,
-  "name": "Answer Container Extractor",
+  "name": "AI Chat Extractor",
   "version": "1.0",
-  "description": "Extracts text from elements with class .answerContainer and sends to background script",
-  "permissions": [
-    "activeTab",
-    "storage",
-    "scripting"
-  ],
-  "host_permissions": [
-    "https://www.perplexity.ai/*"
-  ],
-  "content_scripts": [
-    {
-      "matches": ["https://www.perplexity.ai/*"],
-      "js": ["content.js"],
-      "run_at": "document_idle"
-    }
-  ],
+  "description": "Extracts Q&A pairs from ChatGPT and Perplexity for dashboard memory",
+  "permissions": ["scripting", "activeTab"],
+  "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"
   },
+  "content_scripts": [
+    {
+      "matches": ["*://*.chat.openai.com/*", "*://*.perplexity.ai/*", "*://*.chatgpt.com/*"],
+      "js": ["contentScript.js"],
+      "run_at": "document_idle"
+    }
+  ],
   "action": {
-    "default_title": "Answer Container Extractor"
+    "default_title": "AI Chat Extractor"
   }
-} 
+}

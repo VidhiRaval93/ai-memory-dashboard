@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 import datetime
+import openai
 
 # Load environment variables
 load_dotenv()
@@ -26,7 +27,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
-app = FastAPI(title="Perplexity Summarizer", version="1.0.0")
+app = FastAPI(title="AI Chat Extractor", version="1.0.0")
 
 # Add middleware for CORS
 app.add_middleware(
@@ -51,21 +52,91 @@ class SummarizeResponse(BaseModel):
     summary: str = Field(..., description="Concise summary of the text")
     key_facts: List[KeyFact] = Field(..., description="3-5 key facts with sources")
 
+class ChatLogRequest(BaseModel):
+    question: str = Field(..., description="Question or user message")
+    answer: str = Field(..., description="Answer or assistant message")
+    timestamp: str = Field(..., description="ISO timestamp")
+    source: str = Field(..., description="Source platform (chatgpt or perplexity)")
+    tags: Optional[List[str]] = Field(default=[], description="Extracted tags")
+
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "service": "Perplexity Summarizer"}
+    return {"status": "healthy", "service": "AI Chat Extractor"}
+
+@app.post("/logs")
+def receive_logs():
+    """Simple endpoint to silence noisy POST requests to /logs"""
+    return {"status": "received"}
 
 @app.get("/")
 async def root():
     return {
-        "message": "Perplexity Summarizer API",
+        "message": "AI Chat Extractor API",
         "version": "1.0.0",
         "endpoints": {
+            "POST /logs": "Receive chat data from ChatGPT and Perplexity",
             "POST /summarize": "Summarize text and extract key facts",
             "GET /health": "Health check",
             "GET /": "API information"
         }
     }
+
+@app.post("/chat-logs")
+async def receive_chat_logs(request: ChatLogRequest):
+    """Receive chat logs from both ChatGPT and Perplexity extensions"""
+    logger.info(f"=== RECEIVED CHAT LOG FROM {request.source.upper()} ===")
+    logger.info(f"Question: {request.question[:100]}...")
+    logger.info(f"Answer: {request.answer[:100]}...")
+    logger.info(f"Timestamp: {request.timestamp}")
+    logger.info(f"Tags: {request.tags}")
+    
+    try:
+        # Create entry for spaces.json
+        entry = {
+            "id": f"{request.source}-{int(datetime.datetime.now().timestamp())}",
+            "timestamp": request.timestamp,
+            "source": request.source,
+            "request": {
+                "text": request.question,
+                "source_links": []
+            },
+            "response": {
+                "topic": request.question.split('\n')[0] if '\n' in request.question else request.question[:50],
+                "summary": request.answer,
+                "key_facts": []
+            },
+            "tags": request.tags
+        }
+        
+        # Add to spaces.json
+        spaces_path = pathlib.Path("spaces.json")
+        existing_entries = []
+        if spaces_path.exists():
+            try:
+                with spaces_path.open("r", encoding="utf-8") as f:
+                    existing_entries = json.load(f)
+            except Exception as e:
+                logger.error(f"Error reading spaces.json: {e}")
+                existing_entries = []
+        
+        # Add new entry to the beginning
+        existing_entries.insert(0, entry)
+        
+        # Save back to file
+        with spaces_path.open("w", encoding="utf-8") as f:
+            json.dump(existing_entries, f, indent=2, ensure_ascii=False)
+        
+        logger.info(f"Successfully saved {request.source} entry with ID: {entry['id']}")
+        
+        return {
+            "success": True,
+            "message": f"Chat log from {request.source} saved successfully",
+            "entry_id": entry["id"]
+        }
+        
+    except Exception as e:
+        logger.error(f"Error processing chat log: {e}")
+        raise HTTPException(status_code=500, detail=f"Error processing chat log: {str(e)}")
 
 @app.get("/spaces")
 async def get_spaces():
@@ -78,6 +149,19 @@ async def get_spaces():
             return JSONResponse(content=json.loads(data), status_code=200)
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.get("/api/dashboard-perplexity/data")
+async def get_dashboard_data():
+    """API endpoint for dashboard data"""
+    spaces_path = pathlib.Path("spaces.json")
+    if not spaces_path.exists():
+        return JSONResponse(content={"raw_entries": []}, status_code=200)
+    try:
+        with spaces_path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+            return JSONResponse(content={"raw_entries": data}, status_code=200)
+    except Exception as e:
+        return JSONResponse(content={"error": str(e), "raw_entries": []}, status_code=500)
 
 @app.post("/spaces")
 async def add_space(entry: dict):
@@ -107,22 +191,21 @@ async def add_space(entry: dict):
         logger.error(f"Error writing to spaces.json: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to save entry: {str(e)}")
 
-# Serve the React dashboard at /dashboard-perplexity
-DASHBOARD_PATH = pathlib.Path(__file__).parent / "research-dashboard" / "build"
+# Serve the HTML dashboard at /dashboard
+DASHBOARD_PATH = pathlib.Path(__file__).parent / "dashboard-perplexity"
 if DASHBOARD_PATH.exists():
-    app.mount("/dashboard-perplexity", StaticFiles(directory=str(DASHBOARD_PATH), html=True), name="dashboard-perplexity")
+    app.mount("/dashboard", StaticFiles(directory=str(DASHBOARD_PATH), html=True), name="dashboard")
 
-    @app.get("/dashboard-perplexity/{full_path:path}")
+    @app.get("/dashboard/{full_path:path}")
     async def dashboard_catchall(full_path: str):
         # Always serve index.html for any subroute
         index_path = DASHBOARD_PATH / "index.html"
         return FileResponse(str(index_path))
-    logger.info(f"Dashboard available at http://localhost:8001/dashboard-perplexity")
+    logger.info(f"AI Chat Dashboard available at http://localhost:8003/dashboard")
 else:
-    logger.warning(f"Dashboard build directory not found at {DASHBOARD_PATH}")
+    logger.warning(f"Dashboard directory not found at {DASHBOARD_PATH}")
 
 # --- Summarization logic (OpenAI integration) ---
-import openai
 openai.api_key = os.getenv("OPENAI_API_KEY", "sk-xxx")
 
 def create_prompt(text: str, source_links: Optional[List[str]] = None) -> str:

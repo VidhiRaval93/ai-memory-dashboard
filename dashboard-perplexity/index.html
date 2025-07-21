@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Perplexity Research Dashboard</title>
+  <title>AI Chat Research Dashboard - ChatGPT & Perplexity</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
@@ -18,7 +18,7 @@
     const { useState, useEffect, useRef } = React;
 
     // Main Dashboard Component
-    function DashboardPerplexity() {
+    function AIChatDashboard() {
       const [data, setData] = useState(null);
       const [loading, setLoading] = useState(true);
       const [error, setError] = useState(null);
@@ -322,7 +322,8 @@
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="flex justify-between items-center py-6">
                 <div>
-                  <h1 className="text-3xl font-bold text-gray-900">Perplexity Research Dashboard</h1>
+                  <h1 className="text-3xl font-bold text-gray-900">AI Chat Research Dashboard</h1>
+            <p className="text-lg text-gray-600 mt-1">ChatGPT & Perplexity Research Collection</p>
                   <p className="text-gray-600 mt-1">Track and analyze your research summaries</p>
                 </div>
                 <div className="flex space-x-3">
@@ -573,7 +574,7 @@
     }
 
     // Render the app
-    ReactDOM.render(<DashboardPerplexity />, document.getElementById('root'));
+    ReactDOM.render(<AIChatDashboard />, document.getElementById('root'));
   </script>
 </body>
 </html> 
